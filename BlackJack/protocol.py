@@ -7,11 +7,11 @@ MSG_TYPE_REQUEST = 0x3
 MSG_TYPE_PAYLOAD = 0x4
 
 # Ports
-UDP_PORT = 9999  # Hardcoded per source [114]
+UDP_PORT = 13117  # Hardcoded per source [114]
 
 # Game Constants
-RESULT_WIN = 0x3
-RESULT_LOSS = 0x2
+RESULT_DEALER_WIN = 0x2
+RESULT_CLIENT_WIN = 0x3
 RESULT_TIE = 0x1
 RESULT_ACTIVE = 0x0
 
@@ -34,6 +34,22 @@ def pack_request(num_rounds, team_name):
     team_name_bytes = team_name.encode('utf-8')[:32].ljust(32, b'\x00')
     return struct.pack('!IBB32s', MAGIC_COOKIE, MSG_TYPE_REQUEST, num_rounds, team_name_bytes)
 
+
+
+def calculate_hand( cards):
+    """Calculates blackjack value."""
+    total = 0
+    for rank, suit in cards:
+        if rank == 1: # Ace
+            total += 11
+        elif rank >= 10: # Face cards + 10
+            total += 10
+        else:
+            total += rank
+    
+    
+    return total
+    
 def unpack_request(data):
     try:
         if len(data) != 38: return None
@@ -67,8 +83,23 @@ def pack_payload_server(result, card_rank, card_suit):
 
 def unpack_payload_server(data):
     try:
+        #print("unpack_payload_server called")
         if len(data) != 9: return None
+        #print(f"unpack_payload_server data length: {len(data)}")
         cookie, msg_type, result, rank, suit = struct.unpack('!IBBHB', data)
+        #print(f"unpack_payload_server unpacked: cookie={cookie}, msg_type={msg_type}, result={result}, rank={rank}, suit={suit}")
         if cookie != MAGIC_COOKIE or msg_type != MSG_TYPE_PAYLOAD: return None
         return result, rank, suit
-    except: return None
+    except: 
+        #print("unpack_payload_server error")
+        return None
+
+
+def get_card_points(rank,suit):
+    """Returns the blackjack point value of a card rank."""
+    if rank == 1:
+        return 11  # Ace
+    elif rank >= 10:
+        return 10  # Face cards and 10
+    else:
+        return rank

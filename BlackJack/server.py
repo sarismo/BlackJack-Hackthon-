@@ -40,7 +40,7 @@ class BlackjackServer:
         
         while self.running:
             try:
-                print(f"packet length : {len(packet)}")
+                # print(f"packet length : {len(packet)}")
                 
                 udp_sock.sendto(packet, (self.broadcast_ip, protocol.UDP_PORT))
                 time.sleep(1) # Broadcast every 1 second [cite: 70]
@@ -75,11 +75,11 @@ class BlackjackServer:
                 dealer_cards = [deck.pop(), deck.pop()] 
                 
                 # Send player their two cards
-                self.send_card(conn, protocol.RESULT_ACTIVE, player_cards[0])
-                self.send_card(conn, protocol.RESULT_ACTIVE, player_cards[1])
-                
+                self.send_card(conn, protocol.RESULT_CLIENT_WIN if protocol.calculate_hand(player_cards)>21 else protocol.RESULT_ACTIVE, player_cards[0])
+                self.send_card(conn, protocol.RESULT_DEALER_WIN if protocol.calculate_hand(player_cards)>21 else protocol.RESULT_ACTIVE, player_cards[1])
+                self.send_card(conn, protocol.RESULT_DEALER_WIN if protocol.calculate_hand(player_cards)>21 else protocol.RESULT_ACTIVE, dealer_cards[0]) # Show one dealer card
                 # Player Turn
-                player_value = self.calculate_hand(player_cards)
+                player_value = protocol.calculate_hand(player_cards)
                 player_busted = False
                 
                 while player_value < 21:
@@ -91,12 +91,19 @@ class BlackjackServer:
                     if decision == "Hittt":
                         new_card = deck.pop()
                         player_cards.append(new_card)
-                        player_value = self.calculate_hand(player_cards)
-                        
+                        player_value = protocol.calculate_hand(player_cards)
+                        if player_value > 21:
+                            player_busted = True
                         # Send the new card
-                        self.send_card(conn, protocol.RESULT_ACTIVE, new_card)
+                        self.send_card(conn, protocol.RESULT_ACTIVE if not player_busted else protocol.RESULT_DEALER_WIN, new_card)
                         
                     elif decision == "Stand":
+                        # for i in range(2,player_cards.__len__()):
+                        #     if protocol.calculate_hand(dealer_cards) > 21:
+                        #         dealer_busted = True
+                        #         break
+                        #     dealer_cards.append(deck.pop())
+                        
                         break
                     else:
                         print(f"Invalid decision from client: {decision}")
@@ -104,43 +111,48 @@ class BlackjackServer:
                 
                 if player_value > 21:
                     player_busted = True
+                    result = protocol.RESULT_DEALER_WIN
                 
                 # Dealer Turn
-                dealer_value = self.calculate_hand(dealer_cards)
+                dealer_value = protocol.calculate_hand(dealer_cards)
                 
                 # If player didn't bust, dealer plays
                 if not player_busted:
+                    
+                    if dealer_value > 21:
+                        result = protocol.RESULT_CLIENT_WIN
+                    elif dealer_value >= 17:
+                        if player_value > dealer_value:
+                            result = protocol.RESULT_CLIENT_WIN
+                        elif dealer_value > player_value:
+                            result = protocol.RESULT_DEALER_WIN
+                        else:
+                            result = protocol.RESULT_TIE
+                    else:
+                        result = protocol.RESULT_ACTIVE
+                    self.send_card(conn,result, dealer_cards[1]) # Reveal dealer's second card
+                        
+                    
                     while dealer_value < 17: # Dealer hits on < 17 [cite: 54]
                         new_card = deck.pop()
                         dealer_cards.append(new_card)
-                        dealer_value = self.calculate_hand(dealer_cards)
-                        # Note: We don't send dealer cards to client in real-time based on protocol specs?
-                        # Re-reading source [102]: "The card the client/server pulled from the deck".
-                        # It implies we send updates. But usually dealer reveals at end.
-                        # For simplicity/protocol limits, we only send the RESULT payload at the end 
-                        # or if we want to animate dealer we'd send active payloads.
-                        # Let's just calculate winner.
+                        dealer_value = protocol.calculate_hand(dealer_cards)
+                        if player_busted:
+                            result = protocol.RESULT_CLIENT_WIN
+                        elif dealer_value > 21:
+                            result = protocol.RESULT_CLIENT_WIN
+                        elif player_value > dealer_value:
+                            result = protocol.RESULT_CLIENT_WIN
+                        elif dealer_value > player_value:
+                            result = protocol.RESULT_DEALER_WIN
+                        else:
+                            result = protocol.RESULT_TIE
 
-                # Determine Winner
-                if player_busted:
-                    result = protocol.RESULT_LOSS
-                elif dealer_value > 21:
-                    result = protocol.RESULT_WIN
-                elif player_value > dealer_value:
-                    result = protocol.RESULT_WIN
-                elif dealer_value > player_value:
-                    result = protocol.RESULT_LOSS
-                else:
-                    result = protocol.RESULT_TIE
-                
-                if result == protocol.RESULT_WIN:
-                    wins += 1
-                
-                # Send End of Round Result (with a dummy card 0,0 just to fill packet)
-                # Source [101] says Server sends result.
-                protocol.pack_payload_server(result, 0, 0)
-                conn.sendall(protocol.pack_payload_server(result, 0, 0))
-                
+                        if result == protocol.RESULT_CLIENT_WIN:
+                            wins += 1
+                        self.send_card(conn, result, new_card)
+                        # Note: We don't send dealer cards to client in real-time based on protocol specs?
+
                 print(f"Round {i+1} result for {team_name}: {result} (Player: {player_value}, Dealer: {dealer_value})")
 
             print(f"Finished playing with {team_name}. Wins: {wins}")
@@ -155,6 +167,8 @@ class BlackjackServer:
         # card is (rank, suit)
         # ranks 11,12,13 are J,Q,K. 1 is Ace.
         packet = protocol.pack_payload_server(status, card[0], card[1])
+        print(f"Sending card with status {status}, rank {card[0]}, suit {card[1]}")
+        
         conn.sendall(packet)
 
     def create_deck(self):

@@ -63,46 +63,71 @@ def start_client():
         my_cards = []
         wins = 0
         total_played = 0
+        player_value = 0
         
         while total_played < rounds:
             # We sit in a loop receiving payloads
+            total_played += 1
+            print(f"\n--- Starting Round {total_played } ---")
+            card1Pack = tcp_sock.recv(9)
+            card2Pack = tcp_sock.recv(9)
+            dealerCardPack = tcp_sock.recv(9)
+            # print(f"Received card packs lengths: {(card1Pack)}, {(card2Pack)}, {len(dealerCardPack)}")
+            if not card1Pack or not card2Pack or not dealerCardPack: break
+            
             # Server payload is 9 bytes
-            data = tcp_sock.recv(9)
-            if not data: break
             
-            result, rank, suit = protocol.unpack_payload_server(data)
+            _, fRank, fSuit = protocol.unpack_payload_server(card1Pack)
+            res , sRank,sSuit = protocol.unpack_payload_server(card2Pack)
+            _, dRank, dSuit = protocol.unpack_payload_server(dealerCardPack)
+            my_cards = [(fRank, fSuit), (sRank, sSuit)]
+            dealer_cards = [(dRank, dSuit)]
+            # print(f"Unpacked cards: {(fRank, fSuit)}, {(sRank, sSuit)}, {(dRank, dSuit)}")
+            print(f"Dealt cards: {get_card_name(fRank, fSuit)} and {get_card_name(sRank, sSuit)} , sum : "+protocol.calculate_hand(my_cards).__str__())
+            print(f"Dealer's visible card: {get_card_name(dRank, dSuit)}")
             
-            if result == protocol.RESULT_ACTIVE:
-                # We received a card
-                card_name = get_card_name(rank, suit)
-                print(f"Received card: {card_name}")
-                my_cards.append(rank) # simplify storage for logic
-                
-                # Simple logic to decide Hit or Stand (User interactive)
-                # In the assignment, user is prompted.
-                print("Your hand value: Calculating...") 
-                
+            stand = False
+            while res == protocol.RESULT_ACTIVE and not stand:
                 choice = input("Hit or Stand? ").strip().lower()
                 if choice == 'hit':
                     # Send Hittt [cite: 100]
                     tcp_sock.sendall(protocol.pack_payload_client("Hittt"))
                 else:
                     tcp_sock.sendall(protocol.pack_payload_client("Stand"))
-                    
-            elif result != protocol.RESULT_ACTIVE:
-                # Round Over
-                if result == protocol.RESULT_WIN:
-                    print("You Won!")
-                    wins += 1
-                elif result == protocol.RESULT_LOSS:
-                    print("You Lost.")
-                else:
-                    print("It's a Tie.")
+                    stand = True
+                    break
                 
-                total_played += 1
-                my_cards = [] # Reset for next round
-                print("-" * 20)
+                nextPack = tcp_sock.recv(9)
+                # print(f"Received next pack length: {len(nextPack)}")
+                if not nextPack:
+                    print("No more data from server.")
+                    break
+                res, nRank, nSuit = protocol.unpack_payload_server(nextPack)
+                
+                my_cards.append((nRank, nSuit))
+                print(f"Dealt card: {get_card_name(nRank, nSuit)} , sum : "+protocol.calculate_hand(my_cards ).__str__())
+                if res != protocol.RESULT_ACTIVE:
+                    break
 
+            if stand : 
+                while True:
+                    nextDealerCardPack = tcp_sock.recv(9)
+                    res , cardRank,cardSuit = protocol.unpack_payload_server(nextDealerCardPack)
+                    dealer_cards.append((cardRank,cardSuit))
+                    print(f"Next dealer card is {cardRank}, {cardSuit} status : {res}")
+                    if res!=protocol.RESULT_ACTIVE :
+                        print("----------------------------------------")
+                        break
+                        # print("\nWin" if res == protocol.RESULT_CLIENT_WIN else "Lose" if res == protocol.RESULT_DEALER_WIN else "Tie" , "on this round\n")
+                    
+            if res == protocol.RESULT_DEALER_WIN:
+                print("Dealer wins!")
+            elif res == protocol.RESULT_CLIENT_WIN:
+                wins+=1
+                print("You win!")
+            else:
+                print("It's a tie!")
+            
         print(f"Finished playing {rounds} rounds, win rate: {wins/rounds:.2f}") # [cite: 82]
 
     except Exception as e:
