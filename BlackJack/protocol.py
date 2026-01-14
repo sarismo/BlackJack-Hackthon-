@@ -7,7 +7,7 @@ MSG_TYPE_REQUEST = 0x3
 MSG_TYPE_PAYLOAD = 0x4
 
 # Ports
-UDP_PORT = 13122  # Hardcoded per source [114]
+UDP_PORT = 9999  # Hardcoded per source [114]
 
 # Game Constants
 RESULT_WIN = 0x3

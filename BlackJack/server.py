@@ -21,6 +21,10 @@ class BlackjackServer:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             self.local_ip = s.getsockname()[0]
+            sepreated = self.local_ip.split('.')
+            sepreated[-1] = '255'
+            self.broadcast_ip = '.'.join(sepreated)
+            print(f"Broadcast IP set to {self.broadcast_ip}")
             s.close()
         except:
             self.local_ip = "127.0.0.1"
@@ -36,7 +40,9 @@ class BlackjackServer:
         
         while self.running:
             try:
-                udp_sock.sendto(packet, ('<broadcast>', protocol.UDP_PORT))
+                print(f"packet length : {len(packet)}")
+                
+                udp_sock.sendto(packet, (self.broadcast_ip, protocol.UDP_PORT))
                 time.sleep(1) # Broadcast every 1 second [cite: 70]
             except Exception as e:
                 print(f"UDP Broadcast Error: {e}")
